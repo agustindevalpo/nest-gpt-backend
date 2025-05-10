@@ -1,8 +1,12 @@
 // gpt.controller.ts
-import { Body, Controller, Post, Res } from '@nestjs/common';
+import * as path from 'path';
+import * as fs from 'fs';
+import { Body, Controller, Get, HttpStatus, NotFoundException, Param, Post, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { GptService } from './gpt.service';
-import { OrthographyDto, ProsConsDiscusserDto, TranslateDTO } from './dtos';
+import { OrthographyDto, ProsConsDiscusserDto, TextToAudioDTO, TranslateDTO } from './dtos';
+import { timingSafeEqual } from 'crypto';
+
 
 @Controller('gpt')
 export class GptController {
@@ -31,4 +35,44 @@ export class GptController {
     return this.gptService.translate(translateDto);
   }
 
+  @Post('text-to-audio')
+  async textToAudio(
+    @Body() textToAudioDto: TextToAudioDTO,
+    @Res() res: Response 
+  ) {
+    const result = await this.gptService.textToAudio(textToAudioDto);
+  
+    if (!result.ok || !result.filePath) {
+      return res.status(HttpStatus.BAD_REQUEST).json({
+        ok: false,
+        message: result.message || 'No se pudo generar el archivo de audio'
+      });
+    }
+  
+    res.setHeader('Content-Type', 'audio/mp3');
+    return res.sendFile(result.filePath);
+  }
+  
+  @Get('text-to-audio/:fileId')
+  async getAudio(
+    @Param('fileId') fileId: string,
+    @Res() res: Response 
+  ) {
+    try {
+      const filePath = await this.gptService.textToAudioGetter(fileId);
+      res.setHeader('Content-Type', 'audio/mp3');
+      return res.sendFile(filePath);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return res.status(HttpStatus.NOT_FOUND).json({
+          ok: false,
+          message: error.message
+        });
+      }
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        ok: false,
+        message: 'Error al recuperar el archivo de audio'
+      });
+    }
+  }
 }
